@@ -5,13 +5,16 @@ from sqlalchemy.dialects.mysql import insert
 from datetime import datetime, timedelta
 ##pip install mysql-connector-python bottle SQLAlchemy
 
+##IT's either API creation OR automate function.
+
+
 engine = sql.create_engine('mysql+mysqlconnector://root:@localhost/bottle') ##username:password@host:port/database
 metadata = sql.MetaData(bind=engine)
 
 SecretKey = "1YDfBk-gk2lqXAHn0vWZtx1rO2WYq_9x1gFyuMWO7Hw"
 
 def flash(msg, tag="info"):
-	response.set_cookie("notification", f"{tag}:::● {msg}")
+	response.set_cookie("notification", f"{tag}:::● {msg}" if not "●" in msg else f"{tag}::: {msg}")
 
 def is_logged(conn=engine.connect()):
 	sid = request.get_cookie("sid", secret=SecretKey)
@@ -29,7 +32,7 @@ def get_user():
 	check, email = is_logged(conn)
 	if check:
 		users = sql.Table('users', metadata, autoload = True)
-		query = conn.execute(sql.select(users.c.email, users.c.username, users.c.is_activated).where(users.c.email == email)).first()
+		query = conn.execute(sql.select(users.c.id, users.c.email, users.c.username, users.c.is_activated).where(users.c.email == email)).first()
 		return query._asdict()
 	return None
 
@@ -38,19 +41,61 @@ def index():
 	user = get_user()
 	return template('indexTemplate', user=user)
 
-@route('/home', method="GET")
-def index():
+@route('/apps', method="GET")
+def apps():
 	user = get_user()
 	if user:
-		return template('homeTemplate')
+		conn = engine.connect()
+		apps = sql.Table('apps', metadata, autoload = True)
+		appsList = conn.execute(sql.select(apps).where(apps.c.user == user["id"])).fetchall()
+		return template('appsTemplate', user=user, appsList=appsList)
+	else:
+		flash("You need to login first")
+		redirect("/login")
+
+@route('/apps/create', method=["GET", "POST"])
+def appsCreate():
+	user = get_user()
+	if user:
+		if request.method == "GET":
+			csrf = secrets.token_hex(16)
+			response.set_cookie("csrf", csrf, secret=SecretKey, httponly=True, secure=True, path="/apps/create", SameSite="Strict")
+			return template('appsCreateTemplate', csrf=csrf, user=user)
+		if request.method == "POST":
+			csrf = request.get_cookie("csrf", secret=SecretKey)
+			userCsrf = request.forms.get("csrfmiddlewaretoken")
+			
+			title = request.forms.get('title')
+			letype = request.forms.get('type')
+			data = request.forms.get('data')
+			
+			FormErrors = utils.FormValidator(title, "title") +  utils.FormValidator(letype, "letype") +  utils.FormValidator(data, "data")
+			
+			if FormErrors:
+				flash("<br>".join(FormErrors), "error")
+				redirect("/apps/create")
+			
+			else:
+				if csrf == userCsrf and userCsrf and csrf:
+					conn = engine.connect()
+					apps = sql.Table('apps', metadata, autoload = True)
+					conn.execute(apps.insert().values(user=user["id"], title=title, letype=letype, data=data))
+					
+					flash("Created successfuly.", "success")
+					redirect("/apps")
+				
+				else:
+					flash("There was an error, try again.", "error")
+					redirect("/apps/create")
+			
 	else:
 		flash("You need to login first")
 		redirect("/login")
 
 @route('/login', method=["GET", "POST"])
 def login():
-	check, _ = is_logged()
-	if not check:
+	logged, _ = is_logged()
+	if not logged:
 		if request.method == "GET":
 			csrf = secrets.token_hex(16)
 			response.set_cookie("csrf", csrf, secret=SecretKey, httponly=True, secure=True, path="/login", SameSite="Strict")
@@ -109,8 +154,8 @@ def login():
 
 @route('/signup', method=["GET", "POST"])
 def signup():
-	check, _ = is_logged()
-	if not check:
+	logged, _ = is_logged()
+	if not logged:
 		if request.method == "GET":
 			csrf = secrets.token_hex(16)
 			response.set_cookie("csrf", csrf, secret=SecretKey, httponly=True, secure=True, path="/signup", SameSite="Strict")
@@ -155,8 +200,8 @@ def signup():
 
 @route('/logout', method="GET")
 def logout():
-	check, email = is_logged()
-	if check:
+	logged, email = is_logged()
+	if logged:
 		response.delete_cookie("sid")
 		conn = engine.connect()
 		sessions = sql.Table('sessions', metadata, autoload = True)
@@ -183,4 +228,4 @@ bottle.DEBUG = True
 
 app = bottle.app()
 myapp = StripPathMiddleware(app)
-bottle.run(app=myapp, host='localhost', port=9999, reloader=True)
+bottle.run(app=myapp, host='localhost', port=9999)

@@ -45,10 +45,15 @@
 		}
 	</script>
 	<div id="header">
-		
+		% setdefault('user', None)
+		% if user:
+			<a href="/apps/create">Create an App</a>
+			<a href="/apps">Your apps</a>
 			<a href="/logout">Logout</a>
+		% else:
 			<a href="/login">Login</a>
 			<a href="/signup">Signup</a>
+		% end
 
 	</div>
 	<div id="container">{{!base}}</div>

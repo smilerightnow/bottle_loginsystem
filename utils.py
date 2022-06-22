@@ -7,6 +7,8 @@ def hasher(data):
 	return hashlib.sha256(data.encode()).hexdigest()
 
 def FormValidator(value, letype):
+	if not value:
+		return [f"● {letype} is not set."]
 	value = value.strip()
 	errors = []
 
@@ -19,4 +21,4 @@ def FormValidator(value, letype):
 	if letype == "password" and (not re.findall("^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$", value) or len(value)<8 or len(value)>75):
 		errors.append("Password: Minimum 8 characters, maximum 75, at least one letter and one number.")
 	
-	return errors
+	return ["● " + error for error in errors]
